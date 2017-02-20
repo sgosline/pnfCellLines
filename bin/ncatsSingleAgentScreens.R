@@ -31,7 +31,7 @@ allfiles<-lapply(dfiles$entity.id,function(x) {
   return(res)
 })
 
-names(allfiles)<-dfiles$entity.sampleName
+names(allfiles)<-dfiles$entity.sampleIdentifier
 
 valsOfInterest<<-c(names(allfiles[[1]])[4:13],c('target','CurveClass'))
 
@@ -49,7 +49,7 @@ getValueForAllCells<-function(valname){
 
   #get all drugs
   #ssalldrugs<-unique(allfiles[[1]]$name)
-  drug.values<-sapply(dfiles$entity.sampleName,function(x){
+  drug.values<-sapply(dfiles$entity.sampleIdentifier,function(x){
       if(valname=='CRC' && !valname%in%names(allfiles[[x]]))
         valname='CCLASS2'
       vals<-allfiles[[x]][[valname]]
@@ -129,7 +129,7 @@ plotMostVariableVals<-function(valname,ft='png'){
      }
 
     gt<-dfiles$entity.sampleGenotype
-    names(gt)<-dfiles$entity.sampleName
+    names(gt)<-dfiles$entity.sampleIdentifier
     pheatmap(t(mv),annotation_row=data.frame(Genotype=gt),cellwidth=10,cellheight=10,file=paste('drugsWithMostVariable',valname,'AcrossCellLines.',ft,sep=''))
     return(drug.values)
 
