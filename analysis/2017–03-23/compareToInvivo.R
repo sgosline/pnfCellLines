@@ -16,16 +16,6 @@ maxr<-as.data.frame(maxr)
 maxr$Phenotype<-rownames(maxr)
 maxr.vals<-tidyr::gather(maxr,Sample,Response,1:(ncol(maxr)-1))%>%rename(MAXR=Response)%>%mutate(PhenSamp=paste(Phenotype,Sample,sep='_'))%>%select(MAXR,PhenSamp)
 
-##store file as table - only do once!
-if(FALSE){
-  data<-read.csv("newPnfTab.csv")
-  tc=as.tableColumns(data)
-  df_name='In Vivo Screen Summary'
-  schema=TableSchema(df_name, 'syn7154892', tc$tableColumns)
-  df_table=Table(schema,data)
-  synStore(df_table)
-}
-
 ##now get data
 drug.effic<-synTableQuery('SELECT NCATSname,Efficacy FROM syn8339862')@values
 drug.effic<-rename(drug.effic,Drug=NCATSname)
@@ -43,11 +33,14 @@ library(ggplot2)
 
 par.id<-'syn8339995'
 for(m in unique(fin.tab$Measurement)){
-  ggplot(filter(fin.tab,!is.na(Efficacy),Measurement==m))+geom_boxplot(aes(x=Efficacy,y=Value,col=Sample))
-  fname=paste('inVivoComparisonOfCellLine',m,'.png',sep='')
+  ggplot(filter(fin.tab,!is.na(Efficacy),Measurement==m)%>%filter(Sample%in%c("ipNF95.6","ipNF05.5 (single clone)","ipNF05.5 (mixed clone)")))+geom_boxplot(aes(x=Efficacy,y=Value,col=Sample))
+  fname=paste('inVivoComparisonOf95.6And05.5CellLinesOnly',m,'.png',sep='')
   ggsave(fname)
-  synStore(File(fname,parentId=par.id),executed=list(list(url='https://raw.githubusercontent.com/sgosline/pnfCellLines/master/bin/ncatsSingleAgentScreens.R'),list(url='https://raw.githubusercontent.com/sgosline/pnfCellLines/master/analysis/2017-02-27/compareToInvivo.R')))
+  synStore(File(fname,parentId=par.id),executed=list(list(url='https://raw.githubusercontent.com/sgosline/pnfCellLines/master/bin/ncatsSingleAgentScreens.R'),list(url='https://raw.githubusercontent.com/sgosline/pnfCellLines/master/analysis/2017-03-23/compareToInvivo.R')))
+
 }
+write.table(fin.tab,file='filteredCellLineResponseData.tsv',sep='\t',row.names=F,col.names=T,quote=F)
+synStore(File('filteredCellLineResponseData.tsv',parentId=par.id),executed=list(list(url='https://raw.githubusercontent.com/sgosline/pnfCellLines/master/bin/ncatsSingleAgentScreens.R'),list(url='https://raw.githubusercontent.com/sgosline/pnfCellLines/master/analysis/2017-03-23/compareToInvivo.R')))
 
 
 
