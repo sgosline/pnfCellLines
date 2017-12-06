@@ -4,7 +4,7 @@ library(synapseClient)
 library(tidyverse)
 library(pheatmap)
 
-this.script<-''
+this.script<-'https://raw.githubusercontent.com/sgosline/pnfCellLines/master/analysis/2017-11-20/pNFSignatureAnalysis.R'
 synapseLogin()
 
 geneVals<-read.csv(synGet("syn11274043")@filePath)
@@ -25,10 +25,10 @@ patNames<-res$individualID%>%setNames(res$id)
 
 
 ##plot in cNF data
-pheatmap(cnfData[intersect(rownames(cnfData),as.character(genes)),],annotation_row=data.frame(NFStatus=nfstat),annotation_col = data.frame(Patient=patNames))
-ggsave('pNFGenesIncNFdata.png')
+pheatmap(cnfData[intersect(rownames(cnfData),as.character(genes)),],annotation_row=data.frame(NFStatus=nfstat),annotation_col = data.frame(Patient=patNames),filename = 'pNFGenesIncNFdata.png')
+#ggsave)
 
-synStore(File('pNFGenesIncNFdata.png',parentId=''),executed=list(this.script),used=list(list('syn11274043'),list('syn5714951')))
+synStore(File('pNFGenesIncNFdata.png',parentId='syn11398941'),executed=list(this.script),used=list('syn11274043','syn5714951'))
 ##plot in TCGA data 
 
 
