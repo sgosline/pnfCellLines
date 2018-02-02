@@ -84,13 +84,13 @@ no.int<-subset(nz.coefs,Target!='(Intercept)')
 ggplot(no.int)+geom_line(aes(x=lambda,y=Value,col=Target))
 ggsave('allNonZeroCoefficientsNoIntercept.png')
 synStore(File('allNonZeroCoefficientsNoIntercept.png',parentId='syn11600912'),used=list(this.script))
-thresh<-subset(no.int,lambda>0.02)
+thresh<-subset(no.int,lambda>.02)
 
 ggplot(thresh)+geom_line(aes(x=lambda,y=Value,col=Target))
 ggsave('allNonZeroCoefficientsNoInterceptLambdaover0.02.png')
 synStore(File('allNonZeroCoefficientsNoInterceptLambdaover0.02.png',parentId='syn11600912'),used=list(this.script))
 
-thresh<-subset(no.int,lambda>0.04)
+thresh<-subset(no.int,lambda>.04)
 
 ggplot(thresh)+geom_line(aes(x=lambda,y=Value,col=Target))
 ggsave('allNonZeroCoefficientsNoInterceptLambdaover0.04.png')
