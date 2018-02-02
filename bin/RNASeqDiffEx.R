@@ -1,6 +1,7 @@
 ##now we want to test diffex
 library('sleuth')
 library('synapseClient')
+require(tidyverse)
 synapseLogin()
 
 
@@ -10,31 +11,37 @@ synapseLogin()
 #' @param outliers - list of cell line names to expcloe
 buildDiffExDf<-function(outliers=c()){
 
-  allfiles<-synapseQuery("select name,id,sampleName from entity where parentId=='syn5579785'")
-  h5files=allfiles[grep('*h5',allfiles[,1]),]
+  h5files<-synTableQuery("SELECT id,individualID,nf1Genotype,sex FROM syn7817226 where parentId='syn5579785' and fileFormat='h5'")@values
+  #h5files=allfiles[grep('*h5',allfiles[,1]),]
   
-  ol=which(h5files$entity.sampleName%in%outliers)
+  ol=which(h5files$individualID%in%outliers)
   if(length(ol)>0)
     h5files=h5files[-ol,]
 
-  h5s=lapply(h5files[,2],function(x) synGet(x))
-  snames=lapply(h5s,function(x) x@annotations$sampleName)
-  sgens=lapply(h5s,function(x) x@annotations$sampleGenotype)
-  sors=lapply(h5s,function(x) x@annotations$sampleOrigin)
-  sex=rep('Male',length(sgens))
-  sex[which(sgens=='++')]<-'Female'
-  filepaths=lapply(h5s,function(x) x@filePath)
+  #h5s=lapply(h5files$id,function(x) synGet(x))
+  #snames=lapply(h5s,function(x) x@annotations$sampleName)
+  #sgens=lapply(h5s,function(x) x@annotations$sampleGenotype)
+  #sors=lapply(h5s,function(x) x@annotations$sampleOrigin)
+  #sex=rep('Male',length(sgens))
+  #sex[which(sgens=='++')]<-'Female'
+#  filepaths=lapply(h5s,function(x) x@filePath)
 
-
+  
   ##build the contrast matrix from the annotations
-  df=data.frame(sample=unlist(snames),path=unlist(filepaths),Sex=factor(sex),Origin=factor(unlist(sors),levels=rev(unique(unlist(sors)))),Genotype=factor(unlist(sgens),levels=c("++","+-","--")))
-  one.all=rep('+',length(sgens))
-  one.all[which(sgens=='--')]<-'-'
-  df$OneAllele=factor(one.all,levels=c('-','+'))
-  cul=rep('primary',nrow(df))
-  cul[grep("^i",df$sample)]<-'immortalized'
-  df$Culture=cul
-  df$path=as.character(df$path)
+  h5files$path<-sapply(h5files$id,function(id) synGet(id)@filePath)
+  h5files
+  
+  #df=data.frame(sample=unlist(snames),path=unlist(filepaths),Sex=factor(sex),Origin=factor(unlist(sors),levels=rev(unique(unlist(sors)))),Genotype=factor(unlist(sgens),levels=c("++","+-","--")))
+  one.all=rep('+',nrow(h5files))
+  one.all[which(h5files$nf1Genotype=='-/-')]<-'-'
+  h5files$OneAllele=factor(one.all,levels=c('-','+'))
+  
+  culture<-synTableQuery("SELECT distinct 'Sample Name','Sample Origin', 'Media' FROM syn8397154 where \"RNASeq Data\" is not null")@values
+  df<-h5files%>%inner_join(culture,by=c("individualID"="Sample Name"))%>%rename(Culture='Media',Origin='Sample Origin',sample='individualID')
+  #cul=rep('primary',nrow(df))
+  #cul[grep("^i",df$sample)]<-'immortalized'
+  #df$Culture=cul
+  #df$path=as.character(df$path)
   return(df)
 }
 
@@ -47,6 +54,7 @@ buildGencodeTargetMap<-function(df){
     res=unlist(strsplit(x,split='|',fixed=T))
     list(transcript=res[1],gene=res[6])}))
   t2g<-data.frame(target_id=unique(sf$obs_raw$target_id),t2g)
+
   t2g<-apply(t2g,2,unlist)
   write.table(t2g,file='../../data/gencodeGeneTranscriptMap.csv',sep=',',col.names=T,row.names=F)
 }
