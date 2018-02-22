@@ -274,6 +274,11 @@ plotVals <- function(data.obj, qval, ttype = c(), prefix = '', test = 'OneAllele
   if (length(ttype) > 0) {
     sel <- intersect(sel, which(trans.type %in% ttype))
     print(length(sel))
+    ff <- gsub('+/+', '', test)
+    fname <- paste(ff, ttype, sep = '_')
+  }else{
+    ff <- gsub('+/+', '', test)
+    fname <- ff
   }
   
   targs <- targs[sel]
@@ -284,6 +289,7 @@ plotVals <- function(data.obj, qval, ttype = c(), prefix = '', test = 'OneAllele
   names(tnames) <- targs
   names(trans.type) <- tnames
   
+  write.table(res$gene[sel], paste(fname,'diffGenes.txt', sep = '_'), sep = "\t", row.names = F, col.names = F, quote = F)
   plotGenesInSamples(data.obj, targs,'tpm', tnames, trans.type[sel], 
                      fname = paste(prefix,'diffex',paste(ttype,collapse = '_'), 
                                    ifelse(collapseByGene,'Genes','Transcripts'), 'Q', qval, '.png', sep = ''), 
