@@ -8,8 +8,9 @@ require(tidyverse)
 
 all.dat<-synapser::synTableQuery('SELECT `Sample Name`,`Sample Genotype`,`Media`,`RNASeq Data Gencode` FROM syn8397154')$asDataFrame()%>%subset(!is.na(`RNASeq Data Gencode`))
 
+#remove the bad RNA-Seq file
 ##then pull TPM files
-
+all.dat<-all.dat[-1,]
 all.tpm<-do.call('rbind',lapply(all.dat$`RNASeq Data Gencode`,function(x){
   tab<-NULL
   try(tab<-read.table(synGet(x)$path,header=T)%>%select(Gene=HugoSymbol,tpm))
