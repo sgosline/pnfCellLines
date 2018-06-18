@@ -15,13 +15,15 @@ synLogin()
 ## Cell line info
 
 First we get the pNF data
-```{r Get Data}
+```{r Get Data, echo=FALSE}
 rna.seq.data<-read.table(synapser::synGet('syn12333637')$path,header=T,sep='\t')
 require(tidyverse)
 rna.seq.data<-rna.seq.data%>%group_by(Gene,Sample)%>%summarize(geneTotals=sum(Value))%>%spread(key=Sample,value=geneTotals)
 rna.seq.mat<-apply(as.matrix(dplyr::select(ungroup(rna.seq.data),-Gene)),2,as.numeric)
 rownames(rna.seq.mat)<-rna.seq.data$Gene
 rna.seq.mat<-apply(rna.seq.mat,2,function(x) (x-mean(x,na.rm=T))/sd(x,na.rm=T))
+
+
 
 ```
 Then we get the CCLE and Sanger data
@@ -46,9 +48,11 @@ require(GSVA)
 load('../../data/geneSets.RData')
 
 #create a gene set with only glutamine signatures
-new.list<-c(geneSet.c2[grep('GLUTAMINE',names(geneSet.c2))],geneSet.pathway[grep("GLUTAMINE",names(geneSet.pathway))],geneSet.c2[grep('METAB',names(geneSet.c2))],geneSet.pathway[grep("METAB",names(geneSet.pathway))])
+new.list<-c(geneSet.c2[grep('GLUTAMINE',names(geneSet.c2))],geneSet.pathway[grep("GLUTAMINE",names(geneSet.pathway))])#geneSet.c2[grep('METAB',names(geneSet.c2))],geneSet.pathway[grep("METAB",names(geneSet.pathway))])
 
 g.res<-t(gsva(as.matrix(combined.mat),new.list,method='ssgsea',rnaseq=TRUE,verbose=FALSE))
+
+gdf<-data.frame(g.res)
 
 gdf$Sample<-rownames(g.res)
 
