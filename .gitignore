@@ -3,7 +3,7 @@
 .Rapp.history
 
 # Session Data files
-.RData
+*.RData
 
 # Example code in package build process
 *-Ex.R
@@ -18,3 +18,16 @@ vignettes/*.pdf
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
 .httr-oauth
 .Rproj.user
+*/.DS_Store
+analysis/2018-07-05/GDCdata/
+
+
+
+*.png
+*.csv
+*.rda
+*.rds
+*.html
+*.gz
+*.txt
+analysis/2018-07-05/.DS_Store

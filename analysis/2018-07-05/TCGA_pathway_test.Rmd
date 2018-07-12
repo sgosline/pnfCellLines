@@ -1,0 +1,241 @@
+---
+title: "Pathway analysis of glutamine pathways in TCGA wrt NF1 status"
+author: "Robert Allaway"
+date: "July 5, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(include = FALSE)
+library(synapser)
+synLogin()
+library(plyr)
+library(tidyverse)
+library(data.table)
+library(TCGAbiolinks)
+library(Biobase)
+```
+
+## Tumor info
+
+First we get the TCGA data using the TCGAbiolinks package, which queries the GDC. 
+Let's start out with TCGA-SARC. 
+
+```{r Get Data, echo=FALSE, message=FALSE, warning=FALSE}
+
+query <- GDCquery(project = "TCGA-SARC",
+                           data.category = "Gene expression",
+                           data.type = "Gene expression quantification",
+                           file.type  = "normalized_results",
+                           experimental.strategy = "RNA-Seq",
+                           legacy = TRUE)
+GDCdownload(query, method = "api", files.per.chunk = 10)
+
+data <- GDCprepare(query, summarizedExperiment = FALSE) %>% 
+  rownames_to_column("gene") %>% 
+  mutate(gene = sapply(gene, function(x){
+    strsplit(x, split ="\\|")[[1]][1]})) %>% 
+  filter(gene != "?") %>% 
+  group_by(gene) %>% 
+  summarise_all(base::sum) %>% 
+  ungroup() 
+  
+
+barcodes <- gsub("normalized_count_","",colnames(data)) %>% 
+  gsub("\\D-[[:alnum:]]+-[[:alnum:]]+-[[:alnum:]]+$", "",.) 
+
+sum.table <- table(barcodes) %>% as.data.frame() %>% filter(Freq >1)
+colnames(data) <- barcodes
+
+for(i in sum.table$barcodes){
+  temp <- data[colnames(data)==i]
+  data <- data[colnames(data)!=i] 
+  temp <- temp[,1] %>% as.data.frame() %>% set_names(c(i))
+  data <- cbind(data, temp)
+}
+
+maf <- GDCquery_Maf("SARC", pipelines = "muse") %>% 
+  mutate(Tumor_Sample_Barcode = gsub("normalized_count_","",Tumor_Sample_Barcode) %>% 
+  gsub("\\D-[[:alnum:]]+-[[:alnum:]]+-[[:alnum:]]+$", "",.))
+
+data2 <- data %>% dplyr::select(gene, one_of(maf$Tumor_Sample_Barcode))
+
+nf1_maf <- maf %>% 
+  filter(Entrez_Gene_Id == "4763", !grepl("silent", 
+                                          Variant_Classification, ignore.case = TRUE)) 
+
+nf1_mut_samples <- unique(nf1_maf$Tumor_Sample_Barcode) %>% intersect(.,colnames(data2))
+
+data2 <- data2 %>% 
+  dplyr::select(gene, one_of(nf1_mut_samples), one_of(setdiff(colnames(data), nf1_mut_samples))) %>% 
+  column_to_rownames("gene")
+
+#get gene overlap
+# all.genes<-intersect(rownames(exprs(nf)),intersect(rownames(exprs(ccle)),rownames(exprs(sanger))))
+# print(paste(length(all.genes),'genes in common across all three datasets'))
+# 
+# full.mat<-cbind(exprs(nf)[all.genes,],exprs(ccle)[all.genes,],exprs(sanger)[all.genes,])
+eset<-Biobase::ExpressionSet(as.matrix(data2))
+
+#create batch variable
+samp.source<-c(rep("TCGA",length(colnames(data2))))
+phen.class <-c(rep("mut",length(nf1_mut_samples)), rep("wt", length(setdiff(colnames(data2),
+                                                                              nf1_mut_samples))))
+#create new expression set
+Biobase::phenoData(eset)<-Biobase::AnnotatedDataFrame(data.frame(Source=samp.source, nf1=phen.class))
+
+```
+
+
+<!-- Now we have all the cells combined, need to normalize based on the origin of the data, using ComBat. -->
+
+<!-- ```{r Normalization} -->
+<!-- suppressMessages(suppressWarnings(library(sva))) -->
+<!-- mod0=model.matrix(~1,data=dplyr::select(pData(eset),-sampleID)) -->
+<!-- exprs(eset)[which(is.na(exprs(eset)),arr.ind=T)]<-0.0 -->
+<!-- combat_edata = ComBat(dat=exprs(eset), batch=as.factor(pData(eset)$Source), mod=mod0, par.prior=TRUE, prior.plots=FALSE) -->
+<!-- exprs(eset)<-combat_edata -->
+
+<!-- ``` -->
+
+
+## Pathway Enrichment
+We found four pathways that look at glutamine, so computed enrichment on those.
+
+```{r GSVA calling, message=FALSE, warning=FALSE, include=FALSE}
+library(GSVA)
+library(GSEABase)
+#load('../../data/geneSets.RData')
+new.list<-getGmt('genesets.gmt')
+#create a gene set with only glutamine signatures
+
+g.res<-t(gsva(exprs(eset),new.list,method='ssgsea',verbose=FALSE))
+
+colnames(g.res)<-c("GF AA Metabolic Process","C/N Ligase w/Glut as donor","GF AA Biosynthesis","GF AA Catabolic Process","GF AA Metabolic Process","KEGG Proximal Tubule","Peng Glut Deprivation Dn","Peng Glut Deprivation Up")
+
+gdf<-data.frame(g.res)
+
+gdf$Sample<-rownames(g.res)
+gdf$Source<-pData(eset)$Source
+gdf$NF1Mutant<-as.factor(pData(eset)$nf1)
+g.df<-gdf%>%gather(Pathway,Value,-Sample,-Source,-NF1Mutant)
+
+```
+
+##Pathway Visualization by NF1 Mutation
+
+Now we can plot the data to see what is varying. First we can check to see if NF1 status has any effect. 
+
+```{r NF1 status, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(g.df)+geom_boxplot(aes(x=Pathway,y=Value,fill=NF1Mutant))+ theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+Let's test for significance. We can run a t-test to check.
+
+```{r significance test, echo=FALSE, message=FALSE, warning=FALSE}
+
+g.df%>%dplyr::select(Pathway,Value,NF1Mutant)%>%dplyr::group_by(NF1Mutant,Pathway)%>%dplyr::summarize(value=list(Value))%>%spread(NF1Mutant,value)%>%dplyr::group_by(Pathway)%>%dplyr::mutate(PValue=t.test(unlist(`mut`),unlist(`wt`))$p.value)
+
+```
+
+The glutamine deprivation signatures do not appear to be differentially regulated by NF1 status in TCGA-SARC.  
+
+Let's try all of the other cancer types!
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(GSVA)
+library(GSEABase)
+library(ggbeeswarm)
+
+data <- readRDS("TCGA_expression_data.rds")
+gene.map <- fread("https://www.genenames.org/cgi-bin/download?col=gd_app_sym&col=md_ensembl_id&status=Approved&status=Entry+Withdrawn&status_opt=2&where=&order_by=gd_app_sym_sort&format=text&limit=&hgnc_dbtag=on&submit=submit") %>% 
+  set_names(c("hugo", "gene")) %>% 
+  filter(gene != "")
+
+for(i in names(data)){
+  print(paste0("testing ", i))
+  y <- i
+  seq <- data[[i]]
+  mut <- nf1_mut_samples[[i]]
+  
+  barcodes <- gsub("normalized_count_","",colnames(seq)) %>% 
+  gsub("\\D-[[:alnum:]]+-[[:alnum:]]+-[[:alnum:]]+$", "",.) 
+
+  sum.table <- table(barcodes) %>% as.data.frame() %>% filter(Freq >1)
+  colnames(seq) <- c("gene",barcodes[-1])
+
+  if(nrow(sum.table)>0){ ####this selects first of replicate rnaseq runs for a sample (uncommon)
+    for(i in sum.table$barcodes){
+      temp <- seq[colnames(seq)==i]
+      seq <- seq[colnames(seq)!=i] 
+      temp <- temp[,1] %>% as.data.frame() %>% set_names(c(i))
+      seq <- cbind(seq, temp)
+    }
+  }
+    
+    if(!length(mut$mutant)>0|!length(mut$wt)>0){
+      print(paste("no NF1 mutants and/or wts detected in",y))
+    }else{
+      seq <- dplyr::select(seq, gene, one_of(mut$mutant), one_of(mut$wt))
+      mut$mutant <- mut$mutant[mut$mutant %in% colnames(seq)]
+      mut$wt <- mut$wt[mut$wt %in% colnames(seq)]
+      
+      seq2 <- mutate(seq, gene = gsub("\\.\\d+", "", gene)) %>% 
+        left_join(gene.map) %>%
+        dplyr::select(-gene) %>% 
+        filter(!is.na(hugo)) %>% 
+        group_by(hugo) %>% 
+        mutate_all(sum) %>% 
+        ungroup() %>% 
+        column_to_rownames("hugo")
+    
+      eset<-Biobase::ExpressionSet(as.matrix(seq2))
+
+      #create batch variable
+      samp.source<-c(rep("TCGA",length(colnames(seq2))))
+      phen.class <-c(rep("mut",length(mut$mutant)), rep("wt",
+                                                             length(mut$wt)))
+      #create new expression set
+      Biobase::phenoData(eset)<-Biobase::AnnotatedDataFrame(data.frame(Source=samp.source,
+                                                                       nf1=phen.class))
+
+
+        #load('../../data/geneSets.RData')
+        new.list<-getGmt('genesets.gmt')
+        #create a gene set with only glutamine signatures
+        
+        g.res<-t(gsva(exprs(eset),new.list,method='ssgsea',verbose=FALSE))
+        
+        colnames(g.res)<-c("GF AA Metabolic Process","C/N Ligase w/Glut as donor","GF AA Biosynthesis","GF AA Catabolic Process","GF AA Metabolic Process","KEGG Proximal Tubule","Peng Glut Deprivation Dn","Peng Glut Deprivation Up")
+        
+        gdf<-data.frame(g.res)
+        
+        gdf$Sample<-rownames(g.res)
+        gdf$Source<-pData(eset)$Source
+        gdf$NF1Mutant<-as.factor(pData(eset)$nf1)
+        g.df<-gdf%>%gather(Pathway,Value,-Sample,-Source,-NF1Mutant)
+
+        ggplot(g.df)+geom_boxplot(aes(x=Pathway,y=Value,fill=NF1Mutant))+ theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+          ggtitle(paste("glutamine pathways in",y))
+        ggsave(paste0("glutamine_pathways_",y,"_boxplot.png"))
+        ggplot(g.df)+geom_beeswarm(aes(x=Pathway,y=Value,color=NF1Mutant))+ theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+          ggtitle(paste("glutamine pathways in",y))
+        ggsave(paste0("glutamine_pathways_",y,"_beeswarm.png"))
+        
+        if(length(unique(g.df$Sample[g.df$NF1Mutant=="mut"]))>1){
+        pvals<-g.df%>%dplyr::select(Pathway,Value,NF1Mutant)%>%dplyr::group_by(NF1Mutant,Pathway)%>%dplyr::summarize(value=list(Value))%>%spread(NF1Mutant,value)%>%dplyr::group_by(Pathway)%>%dplyr::mutate(PValue=t.test(unlist(`mut`),unlist(`wt`))$p.value) %>% ungroup() %>%  dplyr::select(Pathway,PValue)
+        write.csv(pvals,paste0("glutamine_pathways_",y,"_pvals.csv"), row.names = F)
+        print(pvals)
+        }else{
+         print('not enough samples for ttest')
+        }
+        
+       print(ggplot(g.df)+geom_boxplot(aes(x=Pathway,y=Value,fill=NF1Mutant))+ theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+          ggtitle(paste("glutamine pathways in",y)))
+       print(ggplot(g.df)+geom_beeswarm(aes(x=Pathway,y=Value,color=NF1Mutant))+ theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+          ggtitle(paste("glutamine pathways in",y)))
+  }  
+}
+
+```
+
