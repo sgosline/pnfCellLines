@@ -1,0 +1,146 @@
+---
+title: "Pathway analysis of pNF cell lines"
+author: "Sara Gosline"
+date: "July 2, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+suppressWarnings(library(synapser))
+synLogin()
+
+```
+
+## Cell line info
+
+First we get the pNF data as well the other cell line data. These are currently stored in a private [Synapse](syn12550830) repository.
+
+```{r Get Data, echo=FALSE}
+
+suppressMessages(suppressWarnings(require(tidyverse)))
+suppressMessages(suppressWarnings(require(Biobase)))
+  
+nf<-readRDS(synapser::synGet("syn12550835")$path)
+ccle<-readRDS(synapser::synGet("syn12550837")$path)
+sanger<-readRDS(synapser::synGet("syn12550839")$path)
+
+#get gene overlap
+all.genes<-intersect(rownames(exprs(nf)),intersect(rownames(exprs(ccle)),rownames(exprs(sanger))))
+print(paste(length(all.genes),'genes in common across all three datasets'))
+
+full.mat<-cbind(exprs(nf)[all.genes,],exprs(ccle)[all.genes,],exprs(sanger)[all.genes,])
+eset<-Biobase::ExpressionSet(as.matrix(full.mat))
+
+#get sample names
+nf.samps=rownames(pData(nf))
+ccle.samps=rownames(pData(ccle))
+sang.samps=rownames(pData(sanger))
+all.samps<-c(nf.samps,ccle.samps,sang.samps)
+
+#create batch variable
+samp.source<-c(rep("NF",length(nf.samps)),rep("CCLE",length(ccle.samps)),rep("Sanger",length(sang.samps)))
+
+#create NF1 data for pNF
+pData(nf)$nf1<-sapply(pData(nf)$`nf1 genotype`,function(x) ifelse(x=="+/+",0,1))
+
+all.phens<-intersect(colnames(pData(nf)),intersect(colnames(pData(ccle)),colnames(pData(sanger))))
+phen.class<-rbind(pData(nf)[,all.phens],pData(ccle)[,all.phens],pData(sanger)[,all.phens])
+
+#create new expression set
+Biobase::phenoData(eset)<-Biobase::AnnotatedDataFrame(data.frame(Source=samp.source,phen.class))
+
+```
+
+
+Now we have all the cells combined, need to normalize based on the origin of the data, using ComBat.
+
+```{r Normalization}
+suppressMessages(suppressWarnings(library(sva)))
+mod0=model.matrix(~1,data=dplyr::select(pData(eset),-sampleID))
+exprs(eset)[which(is.na(exprs(eset)),arr.ind=T)]<-0.0
+combat_edata = ComBat(dat=exprs(eset), batch=as.factor(pData(eset)$Source), mod=mod0, par.prior=TRUE, prior.plots=FALSE)
+exprs(eset)<-combat_edata
+
+```
+
+
+## Pathway Enrichment
+We found four pathways that look at gluatamine, so computed enrichment on those.
+
+```{r GSVA calling, echo=TRUE}
+suppressWarnings(require(GSVA))
+suppressWarnings(require(GSEABase))
+#load('../../data/geneSets.RData')
+new.list<-GSEABase::getGmt('./genesets.gmt')
+#create a gene set with only glutamine signatures
+
+g.res<-t(gsva(exprs(eset),new.list,method='ssgsea',rnaseq=TRUE,verbose=FALSE))
+
+colnames(g.res)<-c("GF AA Metabolic Process","C/N Ligase w/Glut as donor","GF AA Biosynthesis","GF AA Catabolic Process","GF AA Metabolic Process","KEGG Proximal Tubule","Peng Glut Deprivation Dn","Peng Glut Deprivation Up")
+
+gdf<-data.frame(g.res)
+
+
+gdf$Sample<-rownames(g.res)
+gdf$Source<-pData(eset)$Source
+gdf$NF1Mutant<-as.factor(pData(eset)$nf1)
+g.df<-gdf%>%gather(Pathway,Value,-Sample,-Source,-NF1Mutant)
+```
+
+##Pathway Visualization by NF1 Mutation
+
+Now we can plot the data to see what is varying. First we can check to see if NF1 status has any effect. 
+
+```{r NF1 status}
+
+library(ggplot2)
+ggplot(g.df)+geom_boxplot(aes(x=Pathway,y=Value,fill=NF1Mutant))+ theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+There seems to be an oh-so-slight difference in the Peng signature. Let's test for significance. We can run a t-test to check.
+
+```{r significance test}
+
+g.df%>%dplyr::select(Pathway,Value,NF1Mutant)%>%dplyr::group_by(NF1Mutant,Pathway)%>%dplyr::summarize(value=list(Value))%>%spread(NF1Mutant,value)%>%dplyr::group_by(Pathway)%>%dplyr::mutate(PValue=t.test(unlist(`0`),unlist(`1`))$p.value)
+
+```
+
+The glutamine deprivation signatures do appear to be differentially regulated by NF1 status. 
+
+Also let's break down by source:
+
+```{r plot by source}
+ggplot(g.df)+geom_boxplot(aes(x=Pathway,y=Value,fill=NF1Mutant))+facet_grid(.~ Source)+theme(axis.text.x = element_text(angle = 90, hjust = 1))+coord_flip()
+```
+
+
+Here it seems that the NF1 cell lines behave differently than the cancer cell lines.
+
+##pNF Cell Lines
+
+```{r pNF cells only}
+ggplot(subset(g.df,Source=="NF"))+geom_boxplot(aes(x=Pathway,y=Value,col=NF1Mutant))+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+Not to overwhelming, but we can test for significance anyway.
+```{r pNF significance test}
+subset(g.df,Source=="NF")%>%dplyr::select(Pathway,Value,NF1Mutant)%>%dplyr::group_by(NF1Mutant,Pathway)%>%dplyr::summarize(value=list(Value))%>%spread(NF1Mutant,value)%>%dplyr::group_by(Pathway)%>%dplyr::mutate(PValue=t.test(unlist(`0`),unlist(`1`))$p.value)
+
+```
+
+It could also be helpful to plot by specific genotype of these cells lines, since we can break apart the heterozygotes as well.
+```{r full genotype}
+new.df<-subset(g.df,Source=="NF")%>%inner_join(dplyr::select(pData(nf),Sample="sampleID","nf1 genotype"),by="Sample")
+ggplot(new.df)+geom_boxplot(aes(x=Pathway,y=Value,col=`nf1 genotype`))+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+This looks a bit more interesting, maybe we can evaluate the significance of the pathway values between the homozygotes.
+```{r more significance}
+subset(g.df,Source=="NF")%>%inner_join(dplyr::select(pData(nf),Sample="sampleID","nf1 genotype"),by="Sample")%>%dplyr::select(Pathway,Value,'nf1 genotype')%>%dplyr::group_by(`nf1 genotype`,Pathway)%>%dplyr::summarize(value=list(Value))%>%tidyr::spread(`nf1 genotype`,value)%>%dplyr::group_by(Pathway)%>%mutate(PValue=t.test(unlist(`-/-`),unlist(`+/+`))$p.value)
+```
+
+
+From the figure I wonder if there is a difference in the hets?
+```{r het significance}
+subset(g.df,Source=="NF")%>%inner_join(dplyr::select(pData(nf),Sample="sampleID","nf1 genotype"),by="Sample")%>%dplyr::select(Pathway,Value,'nf1 genotype')%>%dplyr::group_by(`nf1 genotype`,Pathway)%>%dplyr::summarize(value=list(Value))%>%tidyr::spread(`nf1 genotype`,value)%>%dplyr::group_by(Pathway)%>%mutate(PValue=t.test(unlist(`+/-`),unlist(`+/+`))$p.value)
+```
