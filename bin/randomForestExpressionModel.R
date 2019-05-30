@@ -30,8 +30,10 @@ evalModel<-function(mod,mat,cats){
         print(samps)
         high.vals=cats[match(samps,cats$vals.model_name),2]=='HIGH'
         high.preds=pred[samps,'HIGH']
-        try(res<-unlist(performance(prediction(high.preds,high.vals),measure='auc')@y.values))
-    }
+        pre=prediction(high.preds,high.vals)
+        per=performance(pre,measure='auc')
+        res=list(pred=pre,perf=per@y.values)
+     }
     return(res)
 }
 

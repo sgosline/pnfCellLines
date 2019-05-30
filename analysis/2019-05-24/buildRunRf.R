@@ -30,15 +30,18 @@ require(pROC)
 require(parallel)
 rocs<-do.call(rbind,mclapply(unique(var.drugs$name),function(x){
     cats<-binDrugResponse(drug.dat,drug=x)
-    auc.val=0.0
+    auc.val=NA
+    prval=NA
     if(is.null(cats))
-        return(auc.val)
+        return(NA)
     mod<-NULL
     try(mod<-buildTestModel(ex.mat,cats))
     if(!is.null(mod)){
-        try(auc.val<-evalModel(mod,ex.mat,cats))
+        try(res<-evalModel(mod,ex.mat,cats))
+        auc.val=res$perf
+        prval=res$pred
 
     }
-    #  print(votes)
-    return(list(drug=x,numSamps=length(intersect(cats$vals.model_name,rownames(ex.mat))),AUC=auc.val))
+
+    return(list(drug=x,numSamps=length(intersect(cats$vals.model_name,rownames(ex.mat))),AUC=auc.val,pred=prval))))
 },mc.cores=30))
