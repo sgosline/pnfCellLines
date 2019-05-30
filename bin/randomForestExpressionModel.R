@@ -19,6 +19,17 @@ findVariableDrugs<-function(drug.dat){
   res
 }
 
+
+evalModel<-function(mod,mat,cats){
+    require(ROCR)
+	    pred=predict(mod,mat,type='prob')
+        samps=intersect(cats$vals.model_name,rownames(pred))
+        print(samps)
+        high.vals=cats[match(samps,cats$vals.model_name),2]=='HIGH'
+    high.preds=pred[samps,'HIGH']
+    unlist(performance(prediction(high.preds,high.vals),measure='auc')@y.values)
+}
+
 buildTestModel<-function(geneex.dat,drug.cats){
     require(randomForest)
     drug.cats<-subset(drug.cats,!is.na(bin))
