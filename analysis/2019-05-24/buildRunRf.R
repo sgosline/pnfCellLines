@@ -45,3 +45,5 @@ rocs<-do.call(rbind,mclapply(unique(var.drugs$name),function(x){
 
     return(list(drug=x,numSamps=length(intersect(cats$vals.model_name,rownames(ex.mat))),AUC=auc.val,pred=prval))))
 },mc.cores=30))
+
+#now plot results
