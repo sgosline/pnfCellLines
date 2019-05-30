@@ -22,7 +22,7 @@ findVariableDrugs<-function(drug.dat){
 
 evalModel<-function(mod,mat,cats){
     require(ROCR)
-    res=0.0
+    res=NA
     pred=NULL
     try(pred<-predict(mod,mat,type='prob'))
     if(!is.null(pred)){
