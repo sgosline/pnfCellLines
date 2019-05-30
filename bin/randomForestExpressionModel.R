@@ -22,12 +22,17 @@ findVariableDrugs<-function(drug.dat){
 
 evalModel<-function(mod,mat,cats){
     require(ROCR)
-	    pred=predict(mod,mat,type='prob')
+    res=0.0
+    pred=NULL
+    try(pred=predict(mod,mat,type='prob'))
+    if(!is.null(pred)){
         samps=intersect(cats$vals.model_name,rownames(pred))
         print(samps)
         high.vals=cats[match(samps,cats$vals.model_name),2]=='HIGH'
     high.preds=pred[samps,'HIGH']
-    unlist(performance(prediction(high.preds,high.vals),measure='auc')@y.values)
+        res=unlist(performance(prediction(high.preds,high.vals),measure='auc')@y.values)
+    }
+    return(res)
 }
 
 buildTestModel<-function(geneex.dat,drug.cats){
