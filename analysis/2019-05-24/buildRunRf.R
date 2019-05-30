@@ -36,9 +36,9 @@ rocs<-do.call(rbind,mclapply(unique(var.drugs$name),function(x){
     mod<-NULL
     try(mod<-buildTestModel(ex.mat,cats))
     if(!is.null(mod)){
-        auc.val=evalModel(mod,ex.mat,cats)
+        try(auc.val<-evalModel(mod,ex.mat,cats))
 
     }
     #  print(votes)
-    return(list(drug=x,numSamps=length(intersect(cats$vals.model_name,rownames(ex.mat))),AUC=unlist(auc.val)))
+    return(list(drug=x,numSamps=length(intersect(cats$vals.model_name,rownames(ex.mat))),AUC=auc.val))
 },mc.cores=30))

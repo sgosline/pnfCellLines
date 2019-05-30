@@ -29,8 +29,8 @@ evalModel<-function(mod,mat,cats){
         samps=intersect(cats$vals.model_name,rownames(pred))
         print(samps)
         high.vals=cats[match(samps,cats$vals.model_name),2]=='HIGH'
-    high.preds=pred[samps,'HIGH']
-        res=unlist(performance(prediction(high.preds,high.vals),measure='auc')@y.values)
+        high.preds=pred[samps,'HIGH']
+        try(res<-unlist(performance(prediction(high.preds,high.vals),measure='auc')@y.values))
     }
     return(res)
 }
