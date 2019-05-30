@@ -1,19 +1,42 @@
 ##run random forest
 require(synapser)
-synLogin()
-synId='syn17462699'
 require(tidyverse)
-tab<-read.csv(synGet(synId)$path)%>%dplyr::rename(internal_id='DT_explorer_internal_id')
 
-drug.map<-synTableQuery('SELECT distinct internal_id,std_name FROM syn17090819')$asDataFrame()
+synLogin()
 
-tab.with.id<-tab%>%left_join(drug.map,by='internal_id')
+#get drug data
 
-all.compounds<-unique(tab.with.id$std_name)
-all.models<-unique(tab.with.id$model_name)
-print(paste('Loaded',length(all.compounds),'compound response data over',length(all.models),'models'))
 
-##now get gene data
+std <- synTableQuery("SELECT  DT_explorer_internal_id, name FROM syn18506944")$asDataFrame() %>%
+  distinct()%>%select(-c(ROW_ID,ROW_VERSION))
+drug.dat<-subset(read.csv(synGet('syn17462699')$path,header=T),study_synapse_id=='syn4939906')%>%subset(response_type=='AUC_Simpson')%>%subset(organism_name=='human')
+
+drug.dat<-drug.dat%>%left_join(std,by='DT_explorer_internal_id')
+drug.dat$model_name=gsub('b C','bC',drug.dat$model_name)
+drug.dat$model_name=gsub('ipnNF95.11C','ipnNF95.11c',drug.dat$model_name)
+drug.dat$model_name=gsub("ipNF05.5$","ipNF05.5 (single clone)",drug.dat$model_name)
+
+##get gene exs
+geneex.dat<-subset(read.csv(synGet('syn18421359')$path,header=T),study=='pNF Cell Line Characterization')
+
+ex.mat<-reshape2::acast(geneex.dat,specimenID~Symbol,value.var="zScore",fun.aggregate=function(x) mean(x,na.rm=T))
 
 
 source("../../bin/randomForestExpressionModel.R")
+
+var.drugs<-findVariableDrugs(drug.dat)
+
+require(pROC)
+require(parallel)
+rocs<-do.call(rbind,mclapply(unique(var.drugs$name),function(x){
+    cats<-binDrugResponse(drug.dat,drug=x)
+    auc.val=0.0
+    if(is.null(cats))
+        return(auc.val)
+    mod<-buildTestModel(ex.mat,cats)
+    votes<-mod$votes
+  #  print(votes)
+    vals<-cats[match(rownames(votes),cats$vals.model_name),2]
+    try(auc.val<-auc(roc(vals,votes[,2])))
+    return(list(drug=x,numSamps=nrow(votes),AUC=auc.val))
+}))
